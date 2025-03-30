@@ -4,7 +4,84 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../models/post.dart';
 import '../services/web3_service.dart';
-import '../services/ai_service.dart';
+import '../services/ai_service.dart';import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+class AIService with ChangeNotifier {
+  final String _apiKey = 'YOUR_OPENAI_API_KEY';
+  bool _isAnalyzing = false;
+
+  bool get isAnalyzing => _isAnalyzing;
+
+  Future<String> analyzeSentiment(String text) async {
+    _isAnalyzing = true;
+    notifyListeners();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_apiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Analyze the sentiment of this text and return only one word: positive, negative, or neutral.'
+            },
+            {'role': 'user', 'content': text}
+          ],
+          'max_tokens': 10,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      return data['choices'][0]['message']['content'].trim().toLowerCase();
+    } catch (e) {
+      return 'neutral';
+    } finally {
+      _isAnalyzing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String> generateSummary(String text) async {
+    _isAnalyzing = true;
+    notifyListeners();
+    
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_apiKey',
+        },
+        body: jsonEncode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content': 'Summarize this text in 1-2 sentences while preserving key points.'
+            },
+            {'role': 'user', 'content': text}
+          ],
+          'max_tokens': 100,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      return data['choices'][0]['message']['content'];
+    } catch (e) {
+      return text.length > 100 ? '${text.substring(0, 100)}...' : text;
+    } finally {
+      _isAnalyzing = false;
+      notifyListeners();
+    }
+  }
+}
 import '../widgets/post_card.dart';
 import 'ar_viewer.dart';
 
