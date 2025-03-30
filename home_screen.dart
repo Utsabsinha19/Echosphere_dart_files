@@ -153,8 +153,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return AppConstants.moodColors[emotion.toLowerCase()] ?? Colors.grey;
   }
 
-  void _showCreatePostDialog() {
-    // Will implement post creation UI
+  void _showCreatePostDialog() async {
+    final newPost = await Navigator.of(context).push<Post>(
+      MaterialPageRoute(builder: (_) => const CreatePostScreen()),
+    );
+    
+    if (newPost != null && mounted) {
+      setState(() {
+        _publicPosts.insert(0, newPost);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Post created successfully!')),
+      );
+    }
   }
 
   void _startVoiceReply(String postId) {
