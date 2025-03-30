@@ -6,14 +6,20 @@ import 'package:web3dart/web3dart.dart';
 import 'screens/login_screen.dart';
 import 'services/wallet_service.dart';
 import 'utils/theme_service.dart';
+import 'constants.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize theme service with default values
+  final themeService = ThemeService();
+  await themeService.setMood('neutral'); // Default mood
+  
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => WalletService()),
-        ChangeNotifierProvider(create: (_) => ThemeService()),
+        ChangeNotifierProvider(create: (_) => themeService),
       ],
       child: const EchoSphereApp(),
     ),
