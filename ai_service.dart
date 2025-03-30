@@ -1,199 +1,129 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
-import '../models/post.dart';
-import '../services/web3_service.dart';
-import '../services/ai_service.dart';import 'dart:convert';
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
+import '../models/post_model.dart';
+import '../constants.dart';
 
-class AIService with ChangeNotifier {
-  final String _apiKey = 'YOUR_OPENAI_API_KEY';
-  bool _isAnalyzing = false;
+class AIService {
+  final _client = http.Client();
 
-  bool get isAnalyzing => _isAnalyzing;
-
-  Future<String> analyzeSentiment(String text) async {
-    _isAnalyzing = true;
-    notifyListeners();
+  Future<List<Post>> getPublicPosts() async {
+    // In a real app, this would fetch from blockchain/IPFS
+    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
     
+    return [
+      Post(
+        id: '1',
+        content: 'Just discovered this amazing new decentralized social platform!',
+        author: '0xUser123',
+        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
+        summary: 'Excited about new decentralized social media',
+        emotionType: 'happy',
+        emotionScore: 85,
+      ),
+      Post(
+        id: '2',
+        content: 'How do I set up my AR profile on EchoSphere?',
+        author: '0xAREnthusiast',
+        timestamp: DateTime.now().subtract(const Duration(hours: 1)),
+        emotionType: 'neutral',
+        emotionScore: 50,
+        isAR: true,
+      ),
+    ];
+  }
+
+  Future<List<Post>> getPersonalizedFeed(String walletAddress) async {
+    // In a real app, this would use AI to curate based on user's history
+    await Future.delayed(const Duration(seconds: 1)); // Simulate network delay
+    
+    return [
+      Post(
+        id: '3',
+        content: 'Based on your interests in Web3, you might like this article...',
+        author: 'EchoSphere AI',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
+        summary: 'Suggested content about Web3 trends',
+        emotionType: 'happy',
+        emotionScore: 75,
+      ),
+      Post(
+        id: '4',
+        content: 'Your network is discussing AR interfaces today',
+        author: 'EchoSphere AI',
+        timestamp: DateTime.now().subtract(const Duration(minutes: 15)),
+        emotionType: 'excited',
+        emotionScore: 90,
+      ),
+    ];
+  }
+
+  Future<String> generateSummary(String content) async {
     try {
-      final response = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
+      final response = await _client.post(
+        Uri.parse('https://api.openai.com/v1/completions'),
         headers: {
+          'Authorization': 'Bearer ${AppConstants.openAIKey}',
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-3.5-turbo',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'Analyze the sentiment of this text and return only one word: positive, negative, or neutral.'
-            },
-            {'role': 'user', 'content': text}
-          ],
-          'max_tokens': 10,
+          'model': 'text-davinci-003',
+          'prompt': 'Summarize this post in one sentence: $content',
+          'max_tokens': 60,
+          'temperature': 0.7,
         }),
       );
 
       final data = jsonDecode(response.body);
-      return data['choices'][0]['message']['content'].trim().toLowerCase();
+      return data['choices'][0]['text'].trim();
     } catch (e) {
-      return 'neutral';
-    } finally {
-      _isAnalyzing = false;
-      notifyListeners();
+      debugPrint('AI summary error: $e');
+      return 'AI summary unavailable';
     }
   }
 
-  Future<String> generateSummary(String text) async {
-    _isAnalyzing = true;
-    notifyListeners();
-    
+  Future<Map<String, dynamic>> analyzeSentiment(String text) async {
     try {
-      final response = await http.post(
-        Uri.parse('https://api.openai.com/v1/chat/completions'),
+      final response = await _client.post(
+        Uri.parse(AppConstants.sentimentAnalysisEndpoint),
+        body: jsonEncode({'text': text}),
+      );
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      debugPrint('Sentiment analysis error: $e');
+      return {'emotion': 'neutral', 'score': 50};
+    }
+  }
+
+  Future<String> generateVoiceReply(String context) async {
+    // Would use voice synthesis API in production
+    return 'This is an AI-generated voice reply';
+  }
+
+  Future<String> convertToBlogPost(String content) async {
+    try {
+      final response = await _client.post(
+        Uri.parse('https://api.openai.com/v1/completions'),
         headers: {
+          'Authorization': 'Bearer ${AppConstants.openAIKey}',
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $_apiKey',
         },
         body: jsonEncode({
-          'model': 'gpt-3.5-turbo',
-          'messages': [
-            {
-              'role': 'system',
-              'content': 'Summarize this text in 1-2 sentences while preserving key points.'
-            },
-            {'role': 'user', 'content': text}
-          ],
-          'max_tokens': 100,
+          'model': 'text-davinci-003',
+          'prompt': 'Convert this social media post into a blog article: $content',
+          'max_tokens': 500,
+          'temperature': 0.7,
         }),
       );
 
       final data = jsonDecode(response.body);
-      return data['choices'][0]['message']['content'];
+      return data['choices'][0]['text'].trim();
     } catch (e) {
-      return text.length > 100 ? '${text.substring(0, 100)}...' : text;
-    } finally {
-      _isAnalyzing = false;
-      notifyListeners();
+      debugPrint('Blog conversion error: $e');
+      return 'Failed to generate blog post';
     }
-  }
-}
-import '../widgets/post_card.dart';
-import 'ar_viewer.dart';
-
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  final TextEditingController _postController = TextEditingController();
-  bool _isListening = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('EchoSphere'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () => Provider.of<Web3Service>(context, listen: false).connectWallet(),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Consumer<Web3Service>(
-              builder: (context, web3, child) {
-                return ListView.builder(
-                  itemCount: web3.posts.length,
-                  itemBuilder: (context, index) {
-                    return PostCard(
-                      post: web3.posts[index],
-                      onTap: () => _viewPostDetails(web3.posts[index]),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _postController,
-                    decoration: InputDecoration(
-                      hintText: 'What\'s on your mind?',
-                      suffixIcon: IconButton(
-                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                        onPressed: _listen,
-                      ),
-                    ),
-                    maxLines: 3,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _createPost,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _listen() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (result) => setState(() {
-            _postController.text = result.recognizedWords;
-          }),
-        );
-      }
-    } else {
-      setState(() => _isListening = false);
-      _speech.stop();
-    }
-  }
-
-  void _createPost() async {
-    if (_postController.text.isEmpty) return;
-    
-    final web3 = Provider.of<Web3Service>(context, listen: false);
-    final ai = Provider.of<AIService>(context, listen: false);
-    
-    final emotion = await ai.analyzeSentiment(_postController.text);
-    final result = await web3.createPost(_postController.text, emotion);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result)),
-    );
-    
-    _postController.clear();
-  }
-
-  void _viewPostDetails(Post post) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ARViewerScreen(postContent: post.content),
-      ),
-    );
   }
 }
