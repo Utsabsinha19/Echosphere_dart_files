@@ -52,8 +52,13 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: walletService.isLoading ? null : () {
-                walletService.connectWallet();
+              onPressed: walletService.isLoading ? null : () async {
+                await walletService.connectWallet();
+                if (walletService.currentAddress != null && mounted) {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  );
+                }
               },
               child: walletService.isLoading
                   ? const CircularProgressIndicator()
