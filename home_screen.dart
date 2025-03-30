@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
-import '../models/post.dart';
-import '../services/web3_service.dart';
+import '../services/wallet_service.dart';
 import '../services/ai_service.dart';
-import '../widgets/post_card.dart';
-import 'ar_viewer.dart';
+import '../utils/theme_service.dart';
+import '../models/post_model.dart';
+import '../constants.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,108 +15,155 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final stt.SpeechToText _speech = stt.SpeechToText();
-  final TextEditingController _postController = TextEditingController();
-  bool _isListening = false;
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  List<Post> _publicPosts = [];
+  List<Post> _privatePosts = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadPosts();
+  }
+
+  Future<void> _loadPosts() async {
+    final aiService = Provider.of<AIService>(context, listen: false);
+    final walletService = Provider.of<WalletService>(context, listen: false);
+    
+    try {
+      setState(() => _isLoading = true);
+      
+      // Load public posts (would be from blockchain in production)
+      _publicPosts = await aiService.getPublicPosts();
+      
+      // Load personalized private feed
+      _privatePosts = await aiService.getPersonalizedFeed(
+        walletService.currentAddress?.hex ?? ''
+      );
+      
+    } catch (e) {
+      debugPrint('Error loading posts: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final themeService = Provider.of<ThemeService>(context);
+
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         title: const Text('EchoSphere'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () => Provider.of<Web3Service>(context, listen: false).connectWallet(),
+            icon: const Icon(Icons.palette),
+            onPressed: () => themeService.toggleTheme(),
+          ),
+          IconButton(
+            icon: FaIcon(themeService.is3DMode 
+              ? FontAwesomeIcons.cube 
+              : FontAwesomeIcons.solidSquare
+            ),
+            onPressed: () => themeService.toggle3DMode(),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Public Feed'),
+            Tab(text: 'Private Feed'),
+          ],
+        ),
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Expanded(
-            child: Consumer<Web3Service>(
-              builder: (context, web3, child) {
-                return ListView.builder(
-                  itemCount: web3.posts.length,
-                  itemBuilder: (context, index) {
-                    return PostCard(
-                      post: web3.posts[index],
-                      onTap: () => _viewPostDetails(web3.posts[index]),
-                    );
-                  },
-                );
-              },
-            ),
+          _buildFeed(_publicPosts, isPublic: true),
+          _buildFeed(_privatePosts, isPublic: false),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showCreatePostDialog(),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildFeed(List<Post> posts, {required bool isPublic}) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppConstants.defaultPadding),
+      itemCount: posts.length,
+      itemBuilder: (context, index) {
+        final post = posts[index];
+        return Card(
+          elevation: Provider.of<ThemeService>(context).is3DMode ? 8 : 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppConstants.cardBorderRadius),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.defaultPadding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _postController,
-                    decoration: InputDecoration(
-                      hintText: 'What\'s on your mind?',
-                      suffixIcon: IconButton(
-                        icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                        onPressed: _listen,
+                Text(
+                  post.content,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: 8),
+                if (post.summary != null)
+                  Text(
+                    'AI Summary: ${post.summary}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.voice_chat),
+                      onPressed: () => _startVoiceReply(post.id),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${post.emotionScore}% ${post.emotionType}',
+                      style: TextStyle(
+                        color: _getEmotionColor(post.emotionType),
                       ),
                     ),
-                    maxLines: 3,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _createPost,
+                  ],
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  void _listen() async {
-    if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (result) => setState(() {
-            _postController.text = result.recognizedWords;
-          }),
         );
-      }
-    } else {
-      setState(() => _isListening = false);
-      _speech.stop();
-    }
+      },
+    );
   }
 
-  void _createPost() async {
-    if (_postController.text.isEmpty) return;
-    
-    final web3 = Provider.of<Web3Service>(context, listen: false);
-    final ai = Provider.of<AIService>(context, listen: false);
-    
-    final emotion = await ai.analyzeSentiment(_postController.text);
-    final result = await web3.createPost(_postController.text, emotion);
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(result)),
-    );
-    
-    _postController.clear();
+  Color _getEmotionColor(String emotion) {
+    return AppConstants.moodColors[emotion.toLowerCase()] ?? Colors.grey;
   }
 
-  void _viewPostDetails(Post post) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ARViewerScreen(postContent: post.content),
-      ),
-    );
+  void _showCreatePostDialog() {
+    // Will implement post creation UI
+  }
+
+  void _startVoiceReply(String postId) {
+    // Will implement voice reply functionality
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 }
